@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Location</title>
+</head>
+<body>
+    <h2>Your Exact Location:</h2>
+    <div id="location"></div>
+
+    <script>
+        navigator.geolocation.getCurrentPosition(pos => {
+            document.getElementById("location").innerHTML = `
+                Latitude: ${pos.coords.latitude}<br>
+                Longitude: ${pos.coords.longitude}<br>
+                Accuracy: ${pos.coords.accuracy} meters
+            `;
+        }, err => {
+            document.getElementById("location").innerHTML = "Error: " + err.message;
+        });
+    </script>
+</body>
+</html>
