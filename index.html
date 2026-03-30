@@ -1,23 +1,736 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Location</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScreenHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #09090f;
+      --surface: #111119;
+      --border: #1e1e2e;
+      --accent: #7c6af7;
+      --accent2: #f76a8c;
+      --text: #e8e8f0;
+      --muted: #5a5a7a;
+      --green: #4af79a;
+      --card: #13131f;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Glow orbs */
+    body::after {
+      content: '';
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(124,106,247,0.08) 0%, transparent 70%);
+      top: -200px;
+      right: -200px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .glow-orb2 {
+      position: fixed;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(247,106,140,0.06) 0%, transparent 70%);
+      bottom: -100px;
+      left: -100px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── NAV ─── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(9,9,15,0.85);
+      backdrop-filter: blur(16px);
+    }
+
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.4rem;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+      animation: pulse 2s ease infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    .nav-status {
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .status-dot.online {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    /* ─── MAIN ─── */
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+
+    /* ─── SCREENS ─── */
+    .screen { display: none; animation: fadeIn 0.3s ease; }
+    .screen.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── HERO ─── */
+    .hero {
+      text-align: center;
+      padding: 40px 0 60px;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(124,106,247,0.3);
+      padding: 4px 14px;
+      border-radius: 100px;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1rem;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto 44px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ─── BUTTONS ─── */
+    .btn {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      padding: 12px 28px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 24px rgba(124,106,247,0.3);
+    }
+
+    .btn-primary:hover {
+      background: #9080ff;
+      box-shadow: 0 0 32px rgba(124,106,247,0.5);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      background: rgba(247,106,140,0.15);
+      color: var(--accent2);
+      border: 1px solid rgba(247,106,140,0.3);
+    }
+
+    .btn-danger:hover {
+      background: rgba(247,106,140,0.25);
+    }
+
+    .btn-sm { padding: 8px 16px; font-size: 0.78rem; }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* ─── CARDS ─── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover { border-color: rgba(124,106,247,0.3); }
+
+    /* ─── FORMS ─── */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .form-group input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-group input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124,106,247,0.15);
+    }
+
+    .form-group input::placeholder { color: var(--muted); }
+
+    /* ─── CREATE / JOIN PANELS ─── */
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 600px) {
+      .panels { grid-template-columns: 1fr; }
+    }
+
+    .panel-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+    }
+
+    .icon-create { background: rgba(124,106,247,0.15); }
+    .icon-join { background: rgba(247,106,140,0.15); }
+
+    /* ─── ROOM SCREEN ─── */
+    .room-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      flex-wrap: gap;
+      gap: 16px;
+    }
+
+    .room-info h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .room-id-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 4px 12px;
+      border-radius: 6px;
+      margin-top: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .room-id-badge:hover { border-color: var(--accent); color: var(--accent); }
+
+    .room-layout {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 24px;
+    }
+
+    @media (max-width: 800px) {
+      .room-layout { grid-template-columns: 1fr; }
+    }
+
+    /* ─── VIDEO GRID ─── */
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .video-tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      position: relative;
+    }
+
+    .video-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .video-tile-label {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      font-size: 0.72rem;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .video-tile-you { border-color: rgba(124,106,247,0.4); }
+
+    /* ─── EMPTY STATE ─── */
+    .empty-state {
+      aspect-ratio: 16/9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      color: var(--muted);
+      gap: 12px;
+    }
+
+    .empty-state .empty-icon { font-size: 2.5rem; opacity: 0.4; }
+    .empty-state p { font-size: 0.85rem; }
+
+    /* ─── SIDEBAR ─── */
+    .sidebar-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-section:last-child { border-bottom: none; }
+
+    .sidebar-title {
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* Share controls */
+    .share-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 10px;
+    }
+
+    .share-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .share-btn.active {
+      background: rgba(74,247,154,0.08);
+      border-color: rgba(74,247,154,0.4);
+      color: var(--green);
+    }
+
+    .share-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Members */
+    .member-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .member-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+    }
+
+    .member-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'Syne', sans-serif;
+      flex-shrink: 0;
+    }
+
+    .member-name { flex: 1; }
+    .member-you { color: var(--muted); font-size: 0.7rem; }
+
+    /* Chat */
+    .chat-messages {
+      height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-bottom: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .chat-msg {
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+
+    .chat-msg-name {
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    .chat-msg-text { color: var(--text); }
+
+    .chat-msg.system .chat-msg-text { color: var(--muted); font-style: italic; }
+
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chat-input-row input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.78rem;
+      outline: none;
+    }
+
+    .chat-input-row input:focus { border-color: var(--accent); }
+
+    /* ─── TOAST ─── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 0.82rem;
+      z-index: 999;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      white-space: nowrap;
+    }
+
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ─── DIVIDER ─── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      margin: 8px 0;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── INVITE SECTION ─── */
+    .invite-box {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+    }
+
+    .invite-box span {
+      flex: 1;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
 </head>
 <body>
-    <h2>Your Exact Location:</h2>
-    <div id="location"></div>
 
-    <script>
-        navigator.geolocation.getCurrentPosition(pos => {
-            document.getElementById("location").innerHTML = `
-                Latitude: ${pos.coords.latitude}<br>
-                Longitude: ${pos.coords.longitude}<br>
-                Accuracy: ${pos.coords.accuracy} meters
-            `;
-        }, err => {
-            document.getElementById("location").innerHTML = "Error: " + err.message;
-        });
-    </script>
+<div class="glow-orb2"></div>
+
+<nav>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    ScreenHub
+  </div>
+  <div class="nav-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">connecting...</span>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ── LANDING SCREEN ── -->
+  <div class="screen active" id="screen-landing">
+    <div class="hero">
+      <div class="hero-tag">✦ P2P Screen Sharing</div>
+      <h1>Share your screen<br>with <span>anyone, instantly</span></h1>
+      <p>Create a room, invite your friends, and share your screen in seconds. No accounts, no downloads.</p>
+    </div>
+
+    <div class="panels">
+      <!-- CREATE -->
+      <div class="card">
+        <div class="panel-title">
+          <div class="panel-icon icon-create">✦</div>
+          Create Room
+        </div>
+        <div class="form-group">
+          <label>Your name</label>
+          <input type="text" id="createName" placeholder="e.g. ozzy" maxlength="24" />
+        </div>
+        <div class="form-group">
+          <label>Room name</label>
+          <input type="text" id="createRoom" placeholder="e.g. dev-session" maxlength="32" />
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="createRoom()">Create Room →</button>
+      </div>
+
+      <!-- JOIN -->
+      <div class="card">
+        <div class="panel-title">
+          <div class="panel-icon icon-join">⌘</div>
+          Join Room
+        </div>
+        <div class="form-group">
+          <label>Your name</label>
+          <input type="text" id="joinName" placeholder="e.g. alex" maxlength="24" />
+        </div>
+        <div class="form-group">
+          <label>Room code</label>
+          <input type="text" id="joinCode" placeholder="paste code here" maxlength="64" />
+        </div>
+        <button class="btn btn-secondary" style="width:100%" onclick="joinRoom()">Join Room →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ROOM SCREEN ── -->
+  <div class="screen" id="screen-room">
+    <div class="room-header">
+      <div class="room-info">
+        <h2 id="roomTitle">Room Name</h2>
+        <div class="room-id-badge" onclick="copyInviteLink()" title="Click to copy invite link">
+          🔗 <span id="roomCodeDisplay"></span> — click to copy
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="leaveRoom()">← Leave</button>
+    </div>
+
+    <div class="room-layout">
+      <!-- VIDEO AREA -->
+      <div>
+        <div id="videoGrid" class="video-grid">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">🖥</div>
+            <p>No screens shared yet</p>
+            <p style="font-size:0.75rem;opacity:0.6">Start sharing from the panel →</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIDEBAR -->
+      <div class="sidebar-card">
+
+        <!-- Share Controls -->
+        <div class="sidebar-section">
+          <div class="sidebar-title">Share</div>
+          <button class="share-btn" id="shareScreenBtn" onclick="toggleScreenShare()">
+            🖥 <span id="shareScreenLabel">Share your screen</span>
+          </button>
+          <button class="share-btn" id="shareCamBtn" onclick="toggleCamShare()">
+            📷 <span id="shareCamLabel">Share webcam</span>
+          </button>
+        </div>
+
+        <!-- Members -->
+        <div class="sidebar-section">
+          <div class="sidebar-title">Members</div>
+          <div class="member-list" id="memberList"></div>
+        </div>
+
+        <!-- Chat -->
+        <div class="sidebar-section">
+          <div class="sidebar-title">Chat</div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="say something..." maxlength="200"
+              onkeydown="if(event.key==='Enter') sendChat()" />
+            <button class="btn btn-sm btn-primary" onclick="sendChat()">→</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="/app.js"></script>
 </body>
 </html>
