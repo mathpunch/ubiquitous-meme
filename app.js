@@ -41,11 +41,6 @@ function makeRoomId(name) {
   return `screenhub-${safe}-${rand}`;
 }
 
-function parsePeerMeta(id) {
-  // IDs we assign to guests: screenhub-<roomid>-guest-<name>-<rand>
-  // Host ID: screenhub-<roomname>-<rand>
-  return id;
-}
 
 // ── Init PeerJS ────────────────────────────────
 function initPeer(customId) {
@@ -154,23 +149,38 @@ async function joinRoom() {
       metadata: { name: myName, type: 'join' }
     });
 
+    let enteredRoom = false;
+
+    // Register data handler BEFORE open so no messages are missed
+    conn.on('data', data => {
+      if (data.type === 'room-info' && !enteredRoom) {
+        enteredRoom = true;
+        roomName = data.roomName;
+        enterRoom();
+      }
+      // Delegate everything else to handleData once we're in
+      if (enteredRoom) handleData(conn.peer, data);
+    });
+
     conn.on('open', () => {
       conn.send({ type: 'join', name: myName, id: myId });
-      setupConn(conn, true);
+      // Add host to peers map
+      const [fg, bg] = nextColor();
+      peers.set(conn.peer, { conn, name: 'Host', color: fg, bg });
+    });
 
-      // Get room name from first message
-      conn.on('data', data => {
-        if (data.type === 'room-info') {
-          roomName = data.roomName;
-          enterRoom();
-        }
-      });
+    conn.on('close', () => {
+      if (peers.has(conn.peer)) {
+        peers.delete(conn.peer);
+        removeMember(conn.peer);
+        addChatSystem('Host disconnected');
+      }
     });
 
     conn.on('error', e => toast('Could not connect: ' + e.message));
 
     setTimeout(() => {
-      if (!peers.has(roomHostId)) toast('Room not found — check the code');
+      if (!enteredRoom) toast('Room not found — check the code');
     }, 8000);
 
   } catch (e) {
@@ -179,33 +189,35 @@ async function joinRoom() {
 }
 
 // ── SETUP DATA CONNECTION ──────────────────────
+// Used by: host receiving any connection, guests connecting to other guests
 function setupConn(conn, isToHost) {
   const peerId = conn.peer;
   const meta = conn.metadata || {};
 
-  conn.on('open', () => {
+  const onOpen = () => {
     if (isHost) {
-      // Tell the new joiner room info + existing members
       conn.send({ type: 'room-info', roomName, hostId: myId });
-
-      // Announce new member to everyone else
       broadcastExcept(peerId, { type: 'peer-joined', id: peerId, name: meta.name });
-
-      // Send existing members list to new peer
       const memberData = [];
       peers.forEach((p, id) => memberData.push({ id, name: p.name }));
       conn.send({ type: 'members', members: memberData });
-
-      // If we're sharing, call them
       if (screenStream) callPeer(peerId, screenStream, 'screen');
       if (camStream) callPeer(peerId, camStream, 'cam');
     }
 
-    const [fg, bg] = nextColor();
-    peers.set(peerId, { conn, name: meta.name || 'Peer', color: fg, bg });
-    addMember(peerId, meta.name || 'Peer', fg, bg);
-    addChatSystem(`${meta.name || 'Peer'} joined`);
-  });
+    if (!peers.has(peerId)) {
+      const [fg, bg] = nextColor();
+      peers.set(peerId, { conn, name: meta.name || 'Peer', color: fg, bg });
+      addMember(peerId, meta.name || 'Peer', fg, bg);
+      addChatSystem(`${meta.name || 'Peer'} joined`);
+    } else {
+      peers.get(peerId).conn = conn;
+    }
+  };
+
+  // PeerJS quirk: connection may already be open
+  if (conn.open) onOpen();
+  else conn.on('open', onOpen);
 
   conn.on('data', data => handleData(peerId, data));
 
@@ -220,25 +232,27 @@ function setupConn(conn, isToHost) {
     addChatSystem(`${name} left`);
     updateEmptyState();
   });
+
+  conn.on('error', e => console.warn('conn error', peerId, e));
 }
 
 // ── HANDLE INCOMING DATA ───────────────────────
 function handleData(fromId, data) {
   switch (data.type) {
-    case 'chat':
+    case 'chat': {
       const p = peers.get(fromId);
       addChatMsg(p?.name || 'Peer', data.text, p?.color || '#aaa');
       break;
-
-    case 'peer-joined':
+    }
+    case 'peer-joined': {
       // Host told us someone joined; connect to them
-      if (!isHost && !peers.has(data.id)) {
+      if (!isHost && data.id !== myId && !peers.has(data.id)) {
         const conn = peer.connect(data.id, { metadata: { name: myName, type: 'guest' } });
         setupConn(conn, false);
       }
       break;
-
-    case 'members':
+    }
+    case 'members': {
       // Initial members list from host
       data.members.forEach(m => {
         if (m.id !== myId && !peers.has(m.id)) {
@@ -247,9 +261,9 @@ function handleData(fromId, data) {
         }
       });
       break;
-
+    }
     case 'room-info':
-      // Already handled in joinRoom
+      // Handled upstream in joinRoom
       break;
   }
 }
@@ -515,14 +529,9 @@ function toast(msg) {
 window.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const roomParam = params.get('room');
-  const nameParam = params.get('name');
 
   if (roomParam) {
     document.getElementById('joinCode').value = roomParam;
-    if (nameParam) {
-      // Pre-fill the room name display only (not re-settable)
-      document.getElementById('joinCode').value = roomParam;
-    }
     toast('Room code pre-filled — enter your name and join!');
   }
 });
